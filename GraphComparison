@@ -1,0 +1,167 @@
+import java.util.*;
+import java.util.function.BiConsumer;
+
+public class GraphComparison {
+
+    public interface Graph {
+        void addEdge(int u, int v);
+        boolean hasEdge(int u, int v);
+        List<Integer> getNeighbors(int u);
+        int getVertexCount();
+        int getEdgeCount();
+        String getRepresentationType();
+    }
+
+    static class AdjacencyMatrixGraph implements Graph {
+        private final boolean[][] matrix;
+        private final int V;
+        private int E;
+
+        public AdjacencyMatrixGraph(int vertices) {
+            if (vertices <= 0) throw new IllegalArgumentException("Количество вершин должно быть > 0");
+            this.V = vertices;
+            this.matrix = new boolean[V][V];
+            this.E = 0;
+        }
+
+        @Override
+        public void addEdge(int u, int v) {
+            validate(u, v);
+            if (!matrix[u][v]) {
+                matrix[u][v] = true;
+                matrix[v][u] = true; // неориентированный граф
+                E++;
+            }
+        }
+
+        @Override
+        public boolean hasEdge(int u, int v) {
+            validate(u, v);
+            return matrix[u][v];
+        }
+
+        @Override
+        public List<Integer> getNeighbors(int u) {
+            validate(u);
+            List<Integer> neighbors = new ArrayList<>();
+            for (int i = 0; i < V; i++) {
+                if (matrix[u][i]) neighbors.add(i);
+            }
+            return neighbors;
+        }
+
+        @Override public int getVertexCount() { return V; }
+        @Override public int getEdgeCount() { return E; }
+        @Override public String getRepresentationType() { return "Матрица смежности"; }
+
+        private void validate(int... vertices) {
+            for (int v : vertices) {
+                if (v < 0 || v >= V) throw new IndexOutOfBoundsException("Недопустимая вершина: " + v);
+            }
+        }
+    }
+
+    // ==================== СПИСОК СМЕЖНОСТИ ====================
+    static class AdjacencyListGraph implements Graph {
+        private final List<List<Integer>> adj;
+        private final int V;
+        private int E;
+
+        public AdjacencyListGraph(int vertices) {
+            if (vertices <= 0) throw new IllegalArgumentException("Количество вершин должно быть > 0");
+            this.V = vertices;
+            this.adj = new ArrayList<>(V);
+            for (int i = 0; i < V; i++) adj.add(new ArrayList<>());
+            this.E = 0;
+        }
+
+        @Override
+        public void addEdge(int u, int v) {
+            validate(u, v);
+            List<Integer> listU = adj.get(u);
+            List<Integer> listV = adj.get(v);
+            if (!listU.contains(v)) {
+                listU.add(v);
+                listV.add(u);
+                E++;
+            }
+        }
+
+        @Override
+        public boolean hasEdge(int u, int v) {
+            validate(u, v);
+            return adj.get(u).contains(v);
+        }
+
+        @Override
+        public List<Integer> getNeighbors(int u) {
+            validate(u);
+            return new ArrayList<>(adj.get(u));
+        }
+
+        @Override public int getVertexCount() { return V; }
+        @Override public int getEdgeCount() { return E; }
+        @Override public String getRepresentationType() { return "Список смежности"; }
+
+        private void validate(int... vertices) {
+            for (int v : vertices) {
+                if (v < 0 || v >= V) throw new IndexOutOfBoundsException("Недопустимая вершина: " + v);
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        final int V = 1000;
+        final int E = 5000;
+        final Random rand = new Random(42);
+
+        Graph matrixGraph = new AdjacencyMatrixGraph(V);
+        Graph listGraph = new AdjacencyListGraph(V);
+
+        // Генерация одинакового набора рёбер
+        List<int[]> edges = new ArrayList<>();
+        for (int i = 0; i < E; i++) {
+            int u = rand.nextInt(V);
+            int v = rand.nextInt(V);
+            if (u != v) edges.add(new int[]{u, v});
+        }
+
+        System.out.println("СРАВНЕНИЕ ПРЕДСТАВЛЕНИЙ ГРАФА");
+        System.out.println("Вершин: " + V + " | Рёбер: ~" + E);
+        System.out.println("─".repeat(50));
+
+        // 1. Добавление рёбер
+        benchmark("Добавление ребра", edges, (g, e) -> g.addEdge(e[0], e[1]), matrixGraph, listGraph);
+
+        // 2. Проверка наличия ребра
+        benchmark("Проверка ребра", edges, (g, e) -> g.hasEdge(e[0], e[1]), matrixGraph, listGraph);
+
+        // 3. Получение соседей
+        List<Integer> checkVertices = new ArrayList<>();
+        for (int i = 0; i < 100; i++) checkVertices.add(rand.nextInt(V));
+        benchmark("Получение соседей", checkVertices, (g, v) -> g.getNeighbors(v), matrixGraph, listGraph);
+
+        // Теоретическая справка
+        System.out.println("\nТЕОРЕТИЧЕСКАЯ СЛОЖНОСТЬ");
+        System.out.println("Операция           | Матрица      | Список       | Примечание");
+        System.out.println("─".repeat(65));
+        System.out.println("Добавление ребра   | O(1)         | O(deg(v))    | в списке поиск дубля O(deg)");
+        System.out.println("Проверка ребра     | O(1)         | O(deg(v))    |");
+        System.out.println("Получение соседей  | O(V)         | O(1)         | возврат готового списка");
+        System.out.println("Память             | O(V²)        | O(V + E)     | матрица всегда V² bool");
+    }
+
+    private static <T> void benchmark(String name, List<T> inputs, BiConsumer<Graph, T> operation, Graph matrix, Graph list) {
+        long t1 = System.nanoTime();
+        for (T input : inputs) operation.accept(matrix, input);
+        long timeMatrix = System.nanoTime() - t1;
+
+
+        long t2 = System.nanoTime();
+        for (T input : inputs) operation.accept(list, input);
+        long timeList = System.nanoTime() - t2;
+
+        System.out.printf("%-22s | Матрица: %,8d ns | Список: %,8d ns | Δ: %.1f%%\n",
+                name, timeMatrix, timeList, (1.0 - (double)timeList/timeMatrix) * 100);
+    }
+}   
